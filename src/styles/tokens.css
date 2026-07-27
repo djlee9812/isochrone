@@ -1,0 +1,20 @@
+:root {
+  --bg: #d8e0e8;
+  --surface: rgba(248, 250, 252, 0.88);
+  --surface-solid: #f8fafc;
+  --text: #1a2332;
+  --text-muted: #5a6a7a;
+  --accent: #b94a3e;
+  --accent-soft: rgba(185, 74, 62, 0.12);
+  --ring-15: #5ba8a0;
+  --ring-30: #2f7a8a;
+  --ring-60: #1e4a66;
+  --inside: #2f7a5a;
+  --outside: #8a6a4a;
+  --stroke: rgba(26, 35, 50, 0.12);
+  --font-display: "Bricolage Grotesque", Georgia, serif;
+  --font-ui: "Figtree", system-ui, sans-serif;
+  --dock-width: 320px;
+  --radius: 14px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
