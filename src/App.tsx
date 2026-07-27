@@ -6,7 +6,7 @@ import {
   fetchMatrixDurations,
   reverseGeocode,
 } from "./api/mapbox";
-import { departAtForPreset } from "./api/departAt";
+import { departAtForWhen } from "./api/departAt";
 import { pointInsideContour } from "./lib/pointInPolygon";
 import {
   assembleIsochrone,
@@ -25,11 +25,11 @@ import {
 import { DURATIONS } from "./lib/types";
 import type {
   Commitment,
+  DepartWhen,
   DurationMinutes,
   FetchStatus,
   GeocodeSuggestion,
   RootLocation,
-  TrafficPreset,
 } from "./lib/types";
 
 function newId(): string {
@@ -46,7 +46,7 @@ export default function App() {
   const [durations, setDurations] = useState<DurationMinutes[]>(
     initial.durations,
   );
-  const [traffic, setTraffic] = useState<TrafficPreset>(initial.traffic);
+  const [traffic, setTraffic] = useState<DepartWhen>(initial.traffic);
   const [commitments, setCommitments] = useState<Commitment[]>(
     initial.commitments,
   );
@@ -130,10 +130,13 @@ export default function App() {
     [maxDuration],
   );
 
+  const { weekday: trafficWeekday, hour: trafficHour, minute: trafficMinute } =
+    traffic;
+
   // Clear derived badges when origin or traffic window changes
   useEffect(() => {
     setCommitments((prev) => clearAnnotations(prev));
-  }, [rootLng, rootLat, traffic]);
+  }, [rootLng, rootLat, trafficWeekday, trafficHour, trafficMinute]);
 
   const commitmentKey = commitments
     .map((c) => `${c.id}:${c.lng},${c.lat}`)
@@ -149,11 +152,17 @@ export default function App() {
       return;
     }
 
+    const when: DepartWhen = {
+      weekday: trafficWeekday,
+      hour: trafficHour,
+      minute: trafficMinute,
+    };
+
     const seq = ++isoSeq.current;
     isoAbort.current?.abort();
 
     // Drop previous origin's rings immediately; show cache for new key if any
-    const previewDepartAt = departAtForPreset(traffic);
+    const previewDepartAt = departAtForWhen(when);
     const preview = assembleIsochrone(
       rootLng,
       rootLat,
@@ -168,7 +177,7 @@ export default function App() {
 
     const handle = window.setTimeout(async () => {
       // Recompute at fetch time so we never send a past depart_at
-      const departAt = departAtForPreset(traffic);
+      const departAt = departAtForWhen(when);
       setActiveDepartAt(departAt);
 
       const needed = missingContours(
@@ -250,7 +259,16 @@ export default function App() {
       window.clearTimeout(handle);
       isoAbort.current?.abort();
     };
-  }, [root, rootLng, rootLat, effectiveDurations, traffic, applyInside]);
+  }, [
+    root,
+    rootLng,
+    rootLat,
+    effectiveDurations,
+    trafficWeekday,
+    trafficHour,
+    trafficMinute,
+    applyInside,
+  ]);
 
   // Matrix ETAs only — uses the same depart_at as the visible rings
   useEffect(() => {

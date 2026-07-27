@@ -1,6 +1,6 @@
 # From Here
 
-A small Boston map tool: pick a starting point and see how far you can **drive** in 15, 30, or 60 minutes under typical weekday morning or evening traffic.
+A small Boston map tool: pick a starting point and see how far you can **drive** in 15, 30, or 60 minutes under typical traffic for a chosen day and time.
 
 Session-only demo on Mapbox (GL JS, Geocoding, Isochrone, Matrix). No accounts or backend.
 
@@ -8,7 +8,7 @@ Session-only demo on Mapbox (GL JS, Geocoding, Isochrone, Matrix). No accounts o
 
 - Full-bleed map with a floating control dock
 - Driving isochrones (`mapbox/driving-traffic`) with 15 / 30 / 60 min rings
-- Weekday **9:00 AM** / **5:00 PM** traffic presets
+- Day-of-week + time controls, with **9AM** / **5PM** shortcuts
 - Recent starts (session) with cached rings for fast toggles
 - Optional places with Inside/Outside badges and drive-time ETAs
 

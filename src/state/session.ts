@@ -1,6 +1,17 @@
-import { DURATIONS, type Commitment, type SessionState, type TrafficPreset } from "../lib/types";
+import { defaultDepartWhen } from "../api/departAt";
+import {
+  TIME_SHORTCUT_PM,
+  parseDepartWhenParts,
+} from "../lib/departWhen";
+import {
+  DURATIONS,
+  type Commitment,
+  type DepartWhen,
+  type SessionState,
+} from "../lib/types";
 
-const KEY = "from-here-session-v1";
+const KEY = "from-here-session-v2";
+const LEGACY_KEY = "from-here-session-v1";
 
 export function toPersistableCommitment(
   c: Commitment,
@@ -17,7 +28,7 @@ export function toPersistableCommitment(
 export const defaultSession = (): SessionState => ({
   root: null,
   durations: [30],
-  traffic: "am",
+  traffic: defaultDepartWhen(),
   commitments: [],
   commitmentsOpen: false,
 });
@@ -34,15 +45,35 @@ function sanitizeDurations(raw: unknown): SessionState["durations"] {
   return filtered.length > 0 ? filtered : defaultSession().durations;
 }
 
-function sanitizeTraffic(raw: unknown): TrafficPreset {
-  return raw === "pm" ? "pm" : "am";
+/** Exported for unit tests. */
+export function sanitizeTraffic(raw: unknown): DepartWhen {
+  const today = defaultDepartWhen();
+  // Legacy am/pm presets → today + shortcut hour (am matches defaultDepartWhen)
+  if (raw === "am") return today;
+  if (raw === "pm") {
+    return {
+      weekday: today.weekday,
+      hour: TIME_SHORTCUT_PM.hour,
+      minute: TIME_SHORTCUT_PM.minute,
+    };
+  }
+
+  if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const parsed = parseDepartWhenParts(o.weekday, o.hour, o.minute);
+    if (parsed) return parsed;
+  }
+  return today;
 }
 
 export function loadSession(): SessionState {
   try {
-    const raw = sessionStorage.getItem(KEY);
+    const raw =
+      sessionStorage.getItem(KEY) ?? sessionStorage.getItem(LEGACY_KEY);
     if (!raw) return defaultSession();
-    const parsed = JSON.parse(raw) as Partial<SessionState>;
+    const parsed = JSON.parse(raw) as Partial<SessionState> & {
+      traffic?: unknown;
+    };
     const base = defaultSession();
     const commitments = Array.isArray(parsed.commitments)
       ? parsed.commitments
@@ -64,7 +95,7 @@ export function loadSession(): SessionState {
       typeof parsed.root.label === "string"
         ? parsed.root
         : null;
-    return {
+    const state: SessionState = {
       ...base,
       root,
       durations: sanitizeDurations(parsed.durations),
@@ -72,6 +103,11 @@ export function loadSession(): SessionState {
       commitments,
       commitmentsOpen: Boolean(parsed.commitmentsOpen),
     };
+    // Write v2 first; only drop v1 after a successful persist
+    if (sessionStorage.getItem(LEGACY_KEY) && saveSession(state)) {
+      sessionStorage.removeItem(LEGACY_KEY);
+    }
+    return state;
   } catch {
     return defaultSession();
   }
@@ -87,7 +123,8 @@ export function sessionPersistKey(state: SessionState): string {
   });
 }
 
-export function saveSession(state: SessionState): void {
+/** @returns true if the session was written to storage */
+export function saveSession(state: SessionState): boolean {
   try {
     const toSave: SessionState = {
       root: state.root,
@@ -97,7 +134,8 @@ export function saveSession(state: SessionState): void {
       commitments: state.commitments.map(toPersistableCommitment),
     };
     sessionStorage.setItem(KEY, JSON.stringify(toSave));
+    return true;
   } catch {
-    // ignore quota / private mode
+    return false;
   }
 }

@@ -1,22 +1,21 @@
 import { AddressSearch } from "./AddressSearch";
 import { DurationChips } from "./DurationChips";
-import { TrafficPresets } from "./TrafficPresets";
+import { WhenControls } from "./WhenControls";
 import { Commitments } from "./Commitments";
 import { RecentSearches } from "./RecentSearches";
 import type {
   Commitment,
+  DepartWhen,
   DurationMinutes,
   FetchStatus,
   GeocodeSuggestion,
   RootLocation,
-  TrafficPreset,
 } from "../lib/types";
-import { trafficLabel } from "../api/departAt";
 
 type Props = {
   root: RootLocation | null;
   durations: DurationMinutes[];
-  traffic: TrafficPreset;
+  traffic: DepartWhen;
   status: FetchStatus;
   statusMessage: string | null;
   commitments: Commitment[];
@@ -25,7 +24,7 @@ type Props = {
   onSelectRoot: (s: GeocodeSuggestion) => void;
   onSelectRecent: (root: RootLocation) => void;
   onDurationsChange: (d: DurationMinutes[]) => void;
-  onTrafficChange: (t: TrafficPreset) => void;
+  onTrafficChange: (t: DepartWhen) => void;
   onToggleCommitments: () => void;
   onAddCommitment: (s: GeocodeSuggestion) => void;
   onRemoveCommitment: (id: string) => void;
@@ -82,7 +81,7 @@ export function Dock({
 
       <section className="dock-section">
         <span className="section-label">When</span>
-        <TrafficPresets value={traffic} onChange={onTrafficChange} />
+        <WhenControls value={traffic} onChange={onTrafficChange} />
       </section>
 
       <div
@@ -90,17 +89,12 @@ export function Dock({
         role="status"
         aria-live="polite"
       >
-        {status === "loading" && (
-          <span>Updating · {trafficLabel(traffic)}…</span>
-        )}
+        {status === "loading" && <span>Updating…</span>}
         {status === "error" && (
           <span>{statusMessage ?? "Something went wrong. Try again."}</span>
         )}
         {status === "idle" && !root && (
           <span>Search an address or click the map to begin.</span>
-        )}
-        {status === "idle" && root && (
-          <span>{trafficLabel(traffic)}</span>
         )}
       </div>
 

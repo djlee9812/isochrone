@@ -3,7 +3,14 @@ export const BOSTON_CENTER: [number, number] = [-71.0589, 42.3601];
 export const DURATIONS = [15, 30, 60] as const;
 export type DurationMinutes = (typeof DURATIONS)[number];
 
-export type TrafficPreset = "am" | "pm";
+/** ISO weekday: Mon=1 … Sun=7 */
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export type DepartWhen = {
+  weekday: Weekday;
+  hour: number;
+  minute: number;
+};
 
 export type LngLat = {
   lng: number;
@@ -39,7 +46,7 @@ export type Commitment = {
 export type SessionState = {
   root: RootLocation | null;
   durations: DurationMinutes[];
-  traffic: TrafficPreset;
+  traffic: DepartWhen;
   commitments: Commitment[];
   commitmentsOpen: boolean;
 };

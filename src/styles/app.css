@@ -345,45 +345,128 @@ input {
   }
 }
 
-/* Traffic presets */
+/* When controls */
 
-.traffic-presets {
+.when-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.day-chips {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.3rem;
+}
+
+.day-chip {
+  position: relative;
+  padding: 0.4rem 0;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface-solid);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  transition:
+    background 180ms var(--ease),
+    border-color 180ms var(--ease),
+    color 180ms var(--ease);
+}
+
+.day-chip:hover {
+  background: var(--accent-soft);
+}
+
+.day-chip.is-active {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.day-chip.is-active::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 4px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: underline-draw 280ms var(--ease) both;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
   gap: 0.4rem;
 }
 
-.preset {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.15rem;
-  padding: 0.55rem 0.65rem;
+.time-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.time-field input[type="time"] {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
   border: 1px solid var(--stroke);
-  border-radius: 10px;
+  border-radius: 8px;
+  background: var(--surface-solid);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  outline: none;
+  transition: border-color 180ms var(--ease);
+}
+
+.time-field input[type="time"]:focus {
+  border-color: var(--accent);
+}
+
+.time-shortcuts {
+  display: flex;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.time-shortcut {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
   background: var(--surface-solid);
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 500;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
   transition:
-    background 220ms var(--ease),
-    border-color 220ms var(--ease);
+    background 180ms var(--ease),
+    border-color 180ms var(--ease),
+    color 180ms var(--ease);
 }
 
-.preset-kicker {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+.time-shortcut:hover {
+  background: var(--accent-soft);
 }
 
-.preset.is-active {
+.time-shortcut.is-active {
   background: var(--accent-soft);
   border-color: transparent;
+  color: var(--accent);
 }
 
-.preset.is-active .preset-kicker {
-  color: var(--accent);
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Status */

@@ -1,49 +1,82 @@
-import type { TrafficPreset } from "../lib/types";
+import type { DepartWhen, Weekday } from "../lib/types";
+import { TIME_SHORTCUT_AM, pad2 } from "../lib/departWhen";
 
 const BOSTON_TZ = "America/New_York";
 
+const bostonFmt = new Intl.DateTimeFormat("en-US", {
+  timeZone: BOSTON_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+const WEEKDAY_MAP: Record<string, number> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
+};
+
 /**
- * Next weekday (Mon–Fri) at 09:00 or 17:00 America/New_York, formatted for
- * Mapbox Isochrone `depart_at` as YYYY-MM-DDThh:mm (local offset inferred from coords).
+ * Next occurrence of the selected weekday at hour:minute America/New_York,
+ * formatted for Mapbox Isochrone `depart_at` as YYYY-MM-DDThh:mm
+ * (local offset inferred from coords).
  *
- * Example: departAtForPreset("am") → "2026-07-28T09:00"
+ * If that slot already passed this week, rolls forward +7 days.
+ * Times in a spring-forward gap clamp to the next valid local minute.
  */
-export function departAtForPreset(preset: TrafficPreset, now = new Date()): string {
-  const hour = preset === "am" ? 9 : 17;
-  const next = nextWeekdayAtHour(now, hour);
+export function departAtForWhen(when: DepartWhen, now = new Date()): string {
+  const next = nextWeekdayAtTime(now, when.weekday, when.hour, when.minute);
   return formatLocalDepartAt(next);
 }
 
-function nextWeekdayAtHour(now: Date, hour: number): Date {
-  for (let offset = 0; offset < 14; offset++) {
-    const candidateLocal = bostonParts(addDays(now, offset));
-    const dow = candidateLocal.weekday; // 1=Mon … 7=Sun (ISO)
-    if (dow > 5) continue;
+/** Fresh-session default: today’s Boston weekday + 09:00. */
+export function defaultDepartWhen(now = new Date()): DepartWhen {
+  const today = bostonParts(now).weekday as Weekday;
+  return {
+    weekday: today,
+    hour: TIME_SHORTCUT_AM.hour,
+    minute: TIME_SHORTCUT_AM.minute,
+  };
+}
 
-    const atSlot = zonedTimeToUtc(
-      candidateLocal.year,
-      candidateLocal.month,
-      candidateLocal.day,
-      hour,
-      0,
-    );
-    // Mapbox depart_at must not be in the past
-    if (atSlot.getTime() >= now.getTime()) {
-      return atSlot;
-    }
-  }
-  // Fallback: next Monday 9/5
+function nextWeekdayAtTime(
+  now: Date,
+  weekday: Weekday,
+  hour: number,
+  minute: number,
+): Date {
   const parts = bostonParts(now);
-  const daysAhead = ((8 - parts.weekday) % 7) || 7;
-  const monday = addDays(now, daysAhead);
-  const mp = bostonParts(monday);
-  return zonedTimeToUtc(mp.year, mp.month, mp.day, hour, 0);
+  const daysAhead = (weekday - parts.weekday + 7) % 7;
+  const first = slotOnOffset(now, daysAhead, hour, minute);
+  if (first.getTime() >= now.getTime()) return first;
+  return slotOnOffset(now, daysAhead + 7, hour, minute);
+}
+
+function slotOnOffset(
+  now: Date,
+  daysAhead: number,
+  hour: number,
+  minute: number,
+): Date {
+  const day = bostonParts(addDays(now, daysAhead));
+  return zonedTimeToUtc(day.year, day.month, day.day, hour, minute);
 }
 
 function addDays(d: Date, n: number): Date {
-  const x = new Date(d.getTime());
-  x.setUTCDate(x.getUTCDate() + n);
-  return x;
+  // Advance Boston civil calendar days (not UTC), so DST transitions
+  // cannot skip/duplicate a weekday when iterating offsets.
+  const p = bostonParts(d);
+  const anchor = new Date(Date.UTC(p.year, p.month - 1, p.day, 12, 0, 0));
+  anchor.setUTCDate(anchor.getUTCDate() + n);
+  return anchor;
 }
 
 function bostonParts(d: Date): {
@@ -54,33 +87,14 @@ function bostonParts(d: Date): {
   hour: number;
   minute: number;
 } {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: BOSTON_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  });
   const parts = Object.fromEntries(
-    fmt.formatToParts(d).map((p) => [p.type, p.value]),
+    bostonFmt.formatToParts(d).map((p) => [p.type, p.value]),
   );
-  const weekdayMap: Record<string, number> = {
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6,
-    Sun: 7,
-  };
   return {
     year: Number(parts.year),
     month: Number(parts.month),
     day: Number(parts.day),
-    weekday: weekdayMap[parts.weekday] ?? 1,
+    weekday: WEEKDAY_MAP[parts.weekday] ?? 1,
     hour: Number(parts.hour),
     minute: Number(parts.minute),
   };
@@ -96,7 +110,7 @@ function zonedTimeToUtc(
 ): Date {
   let lo = Date.UTC(year, month - 1, day - 1, 0, 0);
   let hi = Date.UTC(year, month - 1, day + 1, 23, 59);
-  const target = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
+  const target = `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}`;
   while (lo < hi) {
     const mid = Math.floor((lo + hi) / 2);
     const wall = formatLocalDepartAt(new Date(mid));
@@ -108,13 +122,5 @@ function zonedTimeToUtc(
 
 function formatLocalDepartAt(d: Date): string {
   const p = bostonParts(d);
-  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-export function trafficLabel(preset: TrafficPreset): string {
-  return preset === "am" ? "Weekday 9:00 AM" : "Weekday 5:00 PM";
+  return `${p.year}-${pad2(p.month)}-${pad2(p.day)}T${pad2(p.hour)}:${pad2(p.minute)}`;
 }
