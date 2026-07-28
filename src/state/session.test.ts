@@ -43,6 +43,23 @@ describe("sanitizeTraffic", () => {
     });
   });
 
+  it("scopes legacy am/pm “today” to the given timezone", () => {
+    // Wed 06:00 UTC = Tue evening in LA
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-29T06:00:00Z"));
+    expect(sanitizeTraffic("am", "America/Los_Angeles")).toEqual({
+      weekday: 2,
+      hour: 9,
+      minute: 0,
+    });
+    expect(sanitizeTraffic("am")).toEqual({
+      weekday: 3,
+      hour: 9,
+      minute: 0,
+    });
+    vi.useRealTimers();
+  });
+
   it("accepts valid DepartWhen objects", () => {
     expect(sanitizeTraffic({ weekday: 2, hour: 8, minute: 15 })).toEqual({
       weekday: 2,
@@ -66,6 +83,33 @@ describe("loadSession migration", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("migrates v1 am/pm using pin-local today when root is set", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-29T06:00:00Z"));
+    sessionStorage.setItem(
+      LEGACY_KEY,
+      JSON.stringify({
+        root: {
+          lng: -118.2437,
+          lat: 34.0522,
+          label: "Los Angeles",
+        },
+        durations: [30],
+        traffic: "am",
+        commitments: [],
+        commitmentsOpen: false,
+      }),
+    );
+
+    const state = loadSession();
+    expect(state.traffic).toEqual({
+      weekday: 2,
+      hour: 9,
+      minute: 0,
+    });
+    vi.useRealTimers();
   });
 
   it("migrates v1 am/pm to v2 and removes the legacy key", () => {

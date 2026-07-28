@@ -57,11 +57,34 @@ describe("departAtForWhen", () => {
       departAtForWhen({ weekday: 7, hour: 9, minute: 0 }, now),
     ).toBe("2026-11-01T09:00");
   });
+
+  it("uses the pin timezone wall clock, not Boston", () => {
+    // Wednesday 2026-07-29 08:00 PDT — still before 9AM local in LA
+    const now = new Date("2026-07-29T15:00:00Z");
+    expect(
+      departAtForWhen(
+        { weekday: 3, hour: 9, minute: 0 },
+        now,
+        "America/Los_Angeles",
+      ),
+    ).toBe("2026-07-29T09:00");
+
+    // Same UTC instant is already 11:00 in Boston → would roll +7 there
+    expect(
+      departAtForWhen({ weekday: 3, hour: 9, minute: 0 }, now),
+    ).toBe("2026-08-05T09:00");
+  });
 });
 
 describe("defaultDepartWhen", () => {
-  it("uses today Boston weekday + 9AM", () => {
-    const now = new Date("2026-07-29T12:00:00Z"); // Wed
+  it("uses today in the given timezone + 9AM", () => {
+    // Wednesday morning UTC is still Tuesday evening in LA
+    const now = new Date("2026-07-29T06:00:00Z");
+    expect(defaultDepartWhen(now, "America/Los_Angeles")).toEqual({
+      weekday: 2,
+      hour: 9,
+      minute: 0,
+    });
     expect(defaultDepartWhen(now)).toEqual({
       weekday: 3,
       hour: 9,

@@ -19,6 +19,8 @@ type Props = {
   commitments: Commitment[];
   onMapClick: (lng: number, lat: number) => void;
   onRootDragEnd: (lng: number, lat: number) => void;
+  /** Fired when the map camera settles — used to bias address search. */
+  onViewCenterChange?: (lng: number, lat: number) => void;
 };
 
 export function MapView({
@@ -29,6 +31,7 @@ export function MapView({
   commitments,
   onMapClick,
   onRootDragEnd,
+  onViewCenterChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -36,6 +39,7 @@ export function MapView({
   const commitmentMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const onMapClickRef = useRef(onMapClick);
   const onRootDragEndRef = useRef(onRootDragEnd);
+  const onViewCenterChangeRef = useRef(onViewCenterChange);
   const skipNextFlyRef = useRef(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -46,6 +50,9 @@ export function MapView({
   useEffect(() => {
     onRootDragEndRef.current = onRootDragEnd;
   }, [onRootDragEnd]);
+  useEffect(() => {
+    onViewCenterChangeRef.current = onViewCenterChange;
+  }, [onViewCenterChange]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -82,11 +89,17 @@ export function MapView({
       }
     };
 
+    const publishCenter = () => {
+      const { lng, lat } = map.getCenter();
+      onViewCenterChangeRef.current?.(lng, lat);
+    };
+
     const onLoad = () => {
       ensureIsochroneLayers(map);
       resize();
       setMapReady(true);
       setMapError(null);
+      publishCenter();
     };
 
     const onError = (e: { error?: Error | { message?: string } }) => {
@@ -100,6 +113,7 @@ export function MapView({
 
     map.on("load", onLoad);
     map.on("error", onError);
+    map.on("moveend", publishCenter);
     map.on("click", (e) => {
       onMapClickRef.current(e.lngLat.lng, e.lngLat.lat);
     });
@@ -115,6 +129,7 @@ export function MapView({
       ro.disconnect();
       map.off("load", onLoad);
       map.off("error", onError);
+      map.off("moveend", publishCenter);
       rootMarkerRef.current?.remove();
       rootMarkerRef.current = null;
       commitmentMarkersRef.current.forEach((m) => m.remove());

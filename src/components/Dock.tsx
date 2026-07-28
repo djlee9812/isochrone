@@ -21,6 +21,8 @@ type Props = {
   commitments: Commitment[];
   commitmentsOpen: boolean;
   recents: RootLocation[];
+  /** Map-center bias for address autocomplete. */
+  searchProximity: [number, number];
   onSelectRoot: (s: GeocodeSuggestion) => void;
   onSelectRecent: (root: RootLocation) => void;
   onRemoveRecent: (root: RootLocation) => void;
@@ -40,6 +42,7 @@ export function Dock({
   commitments,
   commitmentsOpen,
   recents,
+  searchProximity,
   onSelectRoot,
   onSelectRecent,
   onRemoveRecent,
@@ -61,7 +64,8 @@ export function Dock({
           Start
         </label>
         <AddressSearch
-          placeholder="Search a Boston address…"
+          placeholder="Search an address…"
+          proximity={searchProximity}
           onSelect={onSelectRoot}
         />
         <RecentSearches
@@ -110,6 +114,7 @@ export function Dock({
         open={commitmentsOpen}
         onToggle={onToggleCommitments}
         commitments={commitments}
+        proximity={searchProximity}
         onAdd={onAddCommitment}
         onRemove={onRemoveCommitment}
       />

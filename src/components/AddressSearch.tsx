@@ -1,16 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { geocodeSuggest } from "../api/mapbox";
+import { suggestContext } from "../lib/geocodeDisplay";
 import type { GeocodeSuggestion } from "../lib/types";
 
 type Props = {
   placeholder?: string;
   onSelect: (suggestion: GeocodeSuggestion) => void;
+  /** Bias ranking toward this lng/lat (map center). Read at fetch time. */
+  proximity?: [number, number];
   disabled?: boolean;
 };
 
 export function AddressSearch({
   placeholder = "Search an address…",
   onSelect,
+  proximity,
   disabled,
 }: Props) {
   const listId = useId();
@@ -20,6 +24,8 @@ export function AddressSearch({
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const skipSuggestRef = useRef(false);
+  const proximityRef = useRef(proximity);
+  proximityRef.current = proximity;
 
   useEffect(() => {
     if (skipSuggestRef.current) {
@@ -38,7 +44,11 @@ export function AddressSearch({
       const ac = new AbortController();
       abortRef.current = ac;
       try {
-        const suggestions = await geocodeSuggest(query, ac.signal);
+        const suggestions = await geocodeSuggest(
+          query,
+          ac.signal,
+          proximityRef.current,
+        );
         if (ac.signal.aborted) return;
         setResults(suggestions);
         setOpen(true);
@@ -89,7 +99,9 @@ export function AddressSearch({
                 }}
               >
                 <span className="suggest-label">{r.label}</span>
-                <span className="suggest-meta">{r.placeName}</span>
+                <span className="suggest-meta">
+                  {suggestContext(r.label, r.placeName)}
+                </span>
               </button>
             </li>
           ))}

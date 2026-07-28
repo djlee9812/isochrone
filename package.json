@@ -15,13 +15,15 @@
     "@fontsource/figtree": "^5.2.8",
     "mapbox-gl": "^3.14.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "tz-lookup": "^6.1.25"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",
     "@types/mapbox-gl": "^3.4.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/tz-lookup": "^6.1.2",
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",

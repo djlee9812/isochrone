@@ -3,6 +3,7 @@ import {
   TIME_SHORTCUT_PM,
   parseDepartWhenParts,
 } from "../lib/departWhen";
+import { timeZoneForLngLat } from "../lib/timeZone";
 import {
   DURATIONS,
   type Commitment,
@@ -45,9 +46,12 @@ function sanitizeDurations(raw: unknown): SessionState["durations"] {
   return filtered.length > 0 ? filtered : defaultSession().durations;
 }
 
-/** Exported for unit tests. */
-export function sanitizeTraffic(raw: unknown): DepartWhen {
-  const today = defaultDepartWhen();
+/** Exported for unit tests. `timeZone` scopes “today” for legacy am/pm / fallbacks. */
+export function sanitizeTraffic(
+  raw: unknown,
+  timeZone?: string,
+): DepartWhen {
+  const today = defaultDepartWhen(new Date(), timeZone);
   // Legacy am/pm presets → today + shortcut hour (am matches defaultDepartWhen)
   if (raw === "am") return today;
   if (raw === "pm") {
@@ -95,11 +99,14 @@ export function loadSession(): SessionState {
       typeof parsed.root.label === "string"
         ? parsed.root
         : null;
+    const rootTz = root
+      ? timeZoneForLngLat(root.lng, root.lat) ?? undefined
+      : undefined;
     const state: SessionState = {
       ...base,
       root,
       durations: sanitizeDurations(parsed.durations),
-      traffic: sanitizeTraffic(parsed.traffic),
+      traffic: sanitizeTraffic(parsed.traffic, rootTz),
       commitments,
       commitmentsOpen: Boolean(parsed.commitmentsOpen),
     };

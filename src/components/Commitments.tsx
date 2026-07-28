@@ -6,6 +6,7 @@ type Props = {
   open: boolean;
   onToggle: () => void;
   commitments: Commitment[];
+  proximity?: [number, number];
   onAdd: (suggestion: GeocodeSuggestion) => void;
   onRemove: (id: string) => void;
 };
@@ -14,6 +15,7 @@ export function Commitments({
   open,
   onToggle,
   commitments,
+  proximity,
   onAdd,
   onRemove,
 }: Props) {
@@ -32,6 +34,7 @@ export function Commitments({
         </p>
         <AddressSearch
           placeholder="Add a place…"
+          proximity={proximity}
           onSelect={onAdd}
         />
         {commitments.length === 0 ? (

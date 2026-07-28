@@ -6,8 +6,9 @@ import {
   fetchMatrixDurations,
   reverseGeocode,
 } from "./api/mapbox";
-import { departAtForWhen } from "./api/departAt";
+import { departAtForWhen, defaultDepartWhen, matchesDefaultDepartWhen } from "./api/departAt";
 import { pointInsideContour } from "./lib/pointInPolygon";
+import { timeZoneForLngLat } from "./lib/timeZone";
 import {
   clearCachedContoursForLocation,
   coordKey,
@@ -27,7 +28,7 @@ import {
   sessionPersistKey,
   toPersistableCommitment,
 } from "./state/session";
-import { DURATIONS } from "./lib/types";
+import { BOSTON_CENTER, DURATIONS } from "./lib/types";
 import type {
   Commitment,
   DepartWhen,
@@ -65,6 +66,11 @@ export default function App() {
   const [activeDepartAt, setActiveDepartAt] = useState<string | null>(null);
   const [status, setStatus] = useState<FetchStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [searchProximity, setSearchProximity] = useState<[number, number]>(() =>
+    initial.root
+      ? [initial.root.lng, initial.root.lat]
+      : BOSTON_CENTER,
+  );
 
   const isoAbort = useRef<AbortController | null>(null);
   const matrixAbort = useRef<AbortController | null>(null);
@@ -75,6 +81,8 @@ export default function App() {
   const lastPersistKey = useRef<string>("");
   const isochroneRef = useRef(isochrone);
   isochroneRef.current = isochrone;
+  const rootRef = useRef(root);
+  rootRef.current = root;
 
   const rootLng = root?.lng;
   const rootLat = root?.lat;
@@ -104,12 +112,24 @@ export default function App() {
   }, [persistKey, root, durations, traffic, commitments, commitmentsOpen]);
 
   const rememberRoot = useCallback((next: RootLocation) => {
-    setRoot((prev) => {
-      if (prev && sameLocation(prev, next) && prev.label === next.label) {
-        return prev;
+    const prev = rootRef.current;
+    if (prev && sameLocation(prev, next) && prev.label === next.label) {
+      setRecents(pushRecent(next));
+      return;
+    }
+
+    // First pin: if When still matches Eastern session default, re-seed to
+    // pin-local today so “today” isn’t a Boston weekday past midnight elsewhere.
+    if (!prev) {
+      const tz = timeZoneForLngLat(next.lng, next.lat);
+      if (tz) {
+        setTraffic((t) =>
+          matchesDefaultDepartWhen(t) ? defaultDepartWhen(new Date(), tz) : t,
+        );
       }
-      return next;
-    });
+    }
+
+    setRoot(next);
     setRecents(pushRecent(next));
   }, []);
 
@@ -173,7 +193,15 @@ export default function App() {
     const originChanged = isoOriginKey.current !== originKey;
     isoOriginKey.current = originKey;
 
-    const previewDepartAt = departAtForWhen(when);
+    const timeZone = timeZoneForLngLat(rootLng, rootLat);
+    if (!timeZone) {
+      setStatus("error");
+      setStatusMessage("Could not determine timezone for this location.");
+      setIsochrone(null);
+      setActiveDepartAt(null);
+      return;
+    }
+    const previewDepartAt = departAtForWhen(when, new Date(), timeZone);
     const preview = resolveCachedIsochrone(
       rootLng,
       rootLat,
@@ -204,7 +232,7 @@ export default function App() {
       if (seq !== isoSeq.current) return;
 
       // Recompute at fetch time so we never send a past depart_at
-      const departAt = departAtForWhen(when);
+      const departAt = departAtForWhen(when, new Date(), timeZone);
       const { needed, assembled } = resolveCachedIsochrone(
         rootLng,
         rootLat,
@@ -439,6 +467,15 @@ export default function App() {
     setCommitments((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
+  const onViewCenterChange = useCallback((lng: number, lat: number) => {
+    setSearchProximity((prev) => {
+      if (Math.abs(prev[0] - lng) < 0.0001 && Math.abs(prev[1] - lat) < 0.0001) {
+        return prev;
+      }
+      return [lng, lat];
+    });
+  }, []);
+
   return (
     <div className="app-shell">
       <MapView
@@ -451,6 +488,7 @@ export default function App() {
         commitments={commitments}
         onMapClick={onMapClick}
         onRootDragEnd={onRootDragEnd}
+        onViewCenterChange={onViewCenterChange}
       />
       <Dock
         root={root}
@@ -461,6 +499,7 @@ export default function App() {
         commitments={commitments}
         commitmentsOpen={commitmentsOpen}
         recents={recents}
+        searchProximity={searchProximity}
         onSelectRoot={onSelectRoot}
         onSelectRecent={onSelectRecent}
         onRemoveRecent={onRemoveRecent}

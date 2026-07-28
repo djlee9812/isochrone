@@ -1,5 +1,6 @@
 import type { DurationMinutes, GeocodeSuggestion } from "../lib/types";
 import { BOSTON_CENTER } from "../lib/types";
+import { formatGeocodeLabel } from "../lib/geocodeDisplay";
 
 const TOKEN = () => {
   const t = (import.meta.env.VITE_MAPBOX_TOKEN as string | undefined)?.trim();
@@ -17,12 +18,14 @@ const TOKEN = () => {
 };
 
 /**
- * Forward geocode with Boston proximity bias.
- * curl "https://api.mapbox.com/geocoding/v5/mapbox.places/Boston%20Common.json?proximity=-71.0589,42.3601&access_token=TOKEN"
+ * Forward geocode, biased toward `proximity` (map center / root).
+ * Ambiguous street names otherwise fill with Boston hits and crowd out
+ * matches elsewhere — proximity is ranking only, not a hard filter.
  */
 export async function geocodeSuggest(
   query: string,
   signal?: AbortSignal,
+  proximity: [number, number] = BOSTON_CENTER,
 ): Promise<GeocodeSuggestion[]> {
   const q = query.trim();
   if (q.length < 2) return [];
@@ -31,9 +34,9 @@ export async function geocodeSuggest(
     `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json`,
   );
   url.searchParams.set("access_token", TOKEN());
-  url.searchParams.set("proximity", `${BOSTON_CENTER[0]},${BOSTON_CENTER[1]}`);
+  url.searchParams.set("proximity", `${proximity[0]},${proximity[1]}`);
   url.searchParams.set("country", "us");
-  url.searchParams.set("limit", "5");
+  url.searchParams.set("limit", "8");
   url.searchParams.set("types", "address,poi,place,locality,neighborhood");
 
   const res = await fetch(url, { signal });
@@ -44,13 +47,15 @@ export async function geocodeSuggest(
     features: Array<{
       id: string;
       text: string;
+      /** House number when type is address */
+      address?: string;
       place_name: string;
       center: [number, number];
     }>;
   };
   return data.features.map((f) => ({
     id: f.id,
-    label: f.text,
+    label: formatGeocodeLabel(f.address, f.text),
     placeName: f.place_name,
     lng: f.center[0],
     lat: f.center[1],
