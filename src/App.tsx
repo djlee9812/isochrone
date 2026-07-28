@@ -9,16 +9,18 @@ import {
 import { departAtForWhen } from "./api/departAt";
 import { pointInsideContour } from "./lib/pointInPolygon";
 import {
-  assembleIsochrone,
   clearCachedContoursForLocation,
   coordKey,
   loadRecents,
-  missingContours,
   putCachedContours,
   pushRecent,
   removeRecent,
   sameLocation,
 } from "./lib/isochroneCache";
+import {
+  planIsochroneDisplay,
+  resolveCachedIsochrone,
+} from "./lib/isochroneDisplay";
 import {
   loadSession,
   saveSession,
@@ -137,10 +139,11 @@ export default function App() {
   const { weekday: trafficWeekday, hour: trafficHour, minute: trafficMinute } =
     traffic;
 
-  // Clear derived badges when origin or traffic window changes
+  // Clear derived badges when the origin moves; traffic changes keep
+  // annotations aligned with whatever rings are still on screen (stale or new).
   useEffect(() => {
     setCommitments((prev) => clearAnnotations(prev));
-  }, [rootLng, rootLat, trafficWeekday, trafficHour, trafficMinute]);
+  }, [rootLng, rootLat]);
 
   const commitmentKey = commitments
     .map((c) => `${c.id}:${c.lng},${c.lat}`)
@@ -170,31 +173,39 @@ export default function App() {
     const originChanged = isoOriginKey.current !== originKey;
     isoOriginKey.current = originKey;
 
-    // Drop previous origin's rings immediately; show cache for new key if any.
-    // Same-origin cache miss keeps prior rings until fetch settles (e.g. after dismiss).
     const previewDepartAt = departAtForWhen(when);
-    const preview = assembleIsochrone(
+    const preview = resolveCachedIsochrone(
       rootLng,
       rootLat,
       previewDepartAt,
       effectiveDurations,
     );
-    if (preview.features.length > 0) {
-      setIsochrone(preview);
-      setCommitments((prev) => applyInside(prev, preview));
-    } else if (originChanged) {
-      setIsochrone(null);
+    const plan = planIsochroneDisplay({
+      originChanged,
+      needed: preview.needed,
+      assembled: preview.assembled,
+    });
+
+    if (plan.nextCollection !== undefined) {
+      const next = plan.nextCollection;
+      setIsochrone(next);
+      // activeDepartAt tracks the depart_at of the rings on screen (Matrix sync).
+      setActiveDepartAt(previewDepartAt);
+      if (plan.syncCommitments === "apply" && next) {
+        setCommitments((prev) => applyInside(prev, next));
+      } else if (plan.syncCommitments === "clear") {
+        setCommitments((prev) => clearAnnotations(prev));
+      }
     }
-    setActiveDepartAt(previewDepartAt);
+    setStatus(plan.status);
+    setStatusMessage(null);
 
     const handle = window.setTimeout(async () => {
       if (seq !== isoSeq.current) return;
 
       // Recompute at fetch time so we never send a past depart_at
       const departAt = departAtForWhen(when);
-      setActiveDepartAt(departAt);
-
-      const needed = missingContours(
+      const { needed, assembled } = resolveCachedIsochrone(
         rootLng,
         rootLat,
         departAt,
@@ -204,14 +215,9 @@ export default function App() {
       isoAbort.current?.abort();
 
       if (needed.length === 0) {
-        const assembled = assembleIsochrone(
-          rootLng,
-          rootLat,
-          departAt,
-          effectiveDurations,
-        );
         if (seq !== isoSeq.current) return;
         setIsochrone(assembled);
+        setActiveDepartAt(departAt);
         setCommitments((prev) => applyInside(prev, assembled));
         setStatus("idle");
         setStatusMessage(null);
@@ -223,18 +229,22 @@ export default function App() {
       setStatus("loading");
       setStatusMessage(null);
 
-      const partial = assembleIsochrone(
-        rootLng,
-        rootLat,
-        departAt,
-        effectiveDurations.filter((d) => !needed.includes(d)),
-      );
-      if (seq !== isoSeq.current) return;
-      if (partial.features.length > 0) {
-        setIsochrone(partial);
-        setCommitments((prev) => applyInside(prev, partial));
-      } else if (originChanged) {
-        setIsochrone(null);
+      // If depart_at drifted since preview, re-apply the display plan once.
+      const deferred = planIsochroneDisplay({
+        originChanged,
+        needed,
+        assembled,
+      });
+      if (deferred.nextCollection !== undefined) {
+        if (seq !== isoSeq.current) return;
+        const next = deferred.nextCollection;
+        setIsochrone(next);
+        setActiveDepartAt(departAt);
+        if (deferred.syncCommitments === "apply" && next) {
+          setCommitments((prev) => applyInside(prev, next));
+        } else if (deferred.syncCommitments === "clear") {
+          setCommitments((prev) => clearAnnotations(prev));
+        }
       }
 
       try {
@@ -248,14 +258,15 @@ export default function App() {
         if (ac.signal.aborted || seq !== isoSeq.current) return;
 
         putCachedContours(rootLng, rootLat, departAt, data.features);
-        const assembled = assembleIsochrone(
+        const next = resolveCachedIsochrone(
           rootLng,
           rootLat,
           departAt,
           effectiveDurations,
-        );
-        setIsochrone(assembled);
-        setCommitments((prev) => applyInside(prev, assembled));
+        ).assembled;
+        setIsochrone(next);
+        setActiveDepartAt(departAt);
+        setCommitments((prev) => applyInside(prev, next));
         setStatus("idle");
       } catch (e) {
         if ((e as Error).name === "AbortError" || ac.signal.aborted) return;
@@ -264,8 +275,12 @@ export default function App() {
         setStatusMessage(
           e instanceof Error ? e.message : "Isochrone request failed",
         );
-        setIsochrone(null);
-        setCommitments((prev) => clearAnnotations(prev));
+        // Origin change: blank. Same origin: keep stale rings + prior activeDepartAt
+        // (still dimmed via error) so Matrix/UI stay consistent with what's drawn.
+        if (originChanged) {
+          setIsochrone(null);
+          setCommitments((prev) => clearAnnotations(prev));
+        }
       }
     }, 280);
 
@@ -430,7 +445,9 @@ export default function App() {
         root={root}
         isochrone={isochrone}
         durations={effectiveDurations}
-        loading={status === "loading"}
+        dimmed={
+          status === "loading" || (status === "error" && isochrone != null)
+        }
         commitments={commitments}
         onMapClick={onMapClick}
         onRootDragEnd={onRootDragEnd}

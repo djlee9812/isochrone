@@ -92,7 +92,12 @@ export function Dock({
         role="status"
         aria-live="polite"
       >
-        {status === "loading" && <span>Updating…</span>}
+        {status === "loading" && (
+          <>
+            <span className="dock-spinner" aria-hidden="true" />
+            <span>Updating…</span>
+          </>
+        )}
         {status === "error" && (
           <span>{statusMessage ?? "Something went wrong. Try again."}</span>
         )}

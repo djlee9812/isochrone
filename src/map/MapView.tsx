@@ -14,7 +14,8 @@ type Props = {
   root: RootLocation | null;
   isochrone: GeoJSON.FeatureCollection | null;
   durations: DurationMinutes[];
-  loading: boolean;
+  /** Dim fill/line while rings are stale or a fetch failed with retained rings. */
+  dimmed: boolean;
   commitments: Commitment[];
   onMapClick: (lng: number, lat: number) => void;
   onRootDragEnd: (lng: number, lat: number) => void;
@@ -24,7 +25,7 @@ export function MapView({
   root,
   isochrone,
   durations,
-  loading,
+  dimmed,
   commitments,
   onMapClick,
   onRootDragEnd,
@@ -181,8 +182,8 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    setIsochroneDimmed(map, loading);
-  }, [loading, mapReady]);
+    setIsochroneDimmed(map, dimmed);
+  }, [dimmed, mapReady]);
 
   // Commitment markers — update in place when possible
   useEffect(() => {

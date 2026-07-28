@@ -11,11 +11,16 @@ const RING_COLORS: Record<DurationMinutes, string> = {
   60: "#1E4A66",
 };
 
-const RING_OPACITY: Record<DurationMinutes, number> = {
+export const ISOCHRONE_RING_OPACITY: Record<DurationMinutes, number> = {
   15: 0.22,
   30: 0.18,
   60: 0.14,
 };
+
+export const ISOCHRONE_LINE_OPACITY = 0.85;
+/** While a matching isochrone is loading, keep prior rings readable but clearly stale. */
+export const ISOCHRONE_DIM_FILL = 0.55;
+export const ISOCHRONE_DIM_LINE = 0.4;
 
 export function ensureIsochroneLayers(map: MapboxMap): void {
   if (!map.getSource(SOURCE_ID)) {
@@ -38,7 +43,7 @@ export function ensureIsochroneLayers(map: MapboxMap): void {
         filter: ["==", ["get", "contour"], minutes],
         paint: {
           "fill-color": RING_COLORS[minutes],
-          "fill-opacity": RING_OPACITY[minutes],
+          "fill-opacity": ISOCHRONE_RING_OPACITY[minutes],
         },
       });
     }
@@ -51,7 +56,7 @@ export function ensureIsochroneLayers(map: MapboxMap): void {
         paint: {
           "line-color": RING_COLORS[minutes],
           "line-width": 1.5,
-          "line-opacity": 0.85,
+          "line-opacity": ISOCHRONE_LINE_OPACITY,
         },
       });
     }
@@ -85,11 +90,22 @@ export function setIsochroneData(
 export function setIsochroneDimmed(map: MapboxMap, dimmed: boolean): void {
   for (const minutes of [15, 30, 60] as DurationMinutes[]) {
     const fillId = `${FILL_PREFIX}${minutes}`;
-    if (!map.getLayer(fillId)) continue;
-    map.setPaintProperty(
-      fillId,
-      "fill-opacity",
-      dimmed ? RING_OPACITY[minutes] * 0.45 : RING_OPACITY[minutes],
-    );
+    const lineId = `${LINE_PREFIX}${minutes}`;
+    if (map.getLayer(fillId)) {
+      map.setPaintProperty(
+        fillId,
+        "fill-opacity",
+        dimmed
+          ? ISOCHRONE_RING_OPACITY[minutes] * ISOCHRONE_DIM_FILL
+          : ISOCHRONE_RING_OPACITY[minutes],
+      );
+    }
+    if (map.getLayer(lineId)) {
+      map.setPaintProperty(
+        lineId,
+        "line-opacity",
+        dimmed ? ISOCHRONE_LINE_OPACITY * ISOCHRONE_DIM_LINE : ISOCHRONE_LINE_OPACITY,
+      );
+    }
   }
 }

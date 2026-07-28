@@ -512,6 +512,23 @@ input {
 .dock-status.is-loading {
   background: rgba(47, 122, 138, 0.1);
   color: var(--ring-30);
+  gap: 0.45rem;
+}
+
+.dock-spinner {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 1.5px solid rgba(47, 122, 138, 0.25);
+  border-top-color: var(--ring-30);
+  animation: dock-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes dock-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .dock-status.is-error {
