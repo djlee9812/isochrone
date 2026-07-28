@@ -191,18 +191,16 @@ input {
 }
 
 .recent-chip {
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
-  padding: 0.3rem 0.55rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.45rem;
   border: 1px solid var(--stroke);
   border-radius: 8px;
   background: var(--surface-solid);
-  cursor: pointer;
   font-size: 0.72rem;
   font-weight: 500;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition:
     background 180ms var(--ease),
     border-color 180ms var(--ease),
@@ -217,6 +215,33 @@ input {
   background: var(--accent-soft);
   border-color: transparent;
   color: var(--accent);
+}
+
+.recent-chip-select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.15rem 0.2rem;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-chip-remove {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--text-muted);
+  padding: 0.1rem 0.3rem;
 }
 
 /* Address search */

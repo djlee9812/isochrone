@@ -18,13 +18,18 @@ export function sameLocation(
   return coordKey(a.lng, a.lat) === coordKey(b.lng, b.lat);
 }
 
+/** Shared key stem so clears cannot drift from contourCacheKey. */
+export function locationCachePrefix(lng: number, lat: number): string {
+  return `${coordKey(lng, lat)}|`;
+}
+
 export function contourCacheKey(
   lng: number,
   lat: number,
   departAt: string,
   minutes: DurationMinutes,
 ): string {
-  return `${coordKey(lng, lat)}|${departAt}|${minutes}`;
+  return `${locationCachePrefix(lng, lat)}${departAt}|${minutes}`;
 }
 
 type CacheStore = Record<string, GeoJSON.Feature>;
@@ -177,4 +182,22 @@ export function pushRecent(root: RootLocation): RootLocation[] {
   ].slice(0, MAX_RECENTS);
   persistRecents();
   return loadRecents();
+}
+
+export function removeRecent(root: RootLocation): RootLocation[] {
+  memoryRecents = memoryRecents.filter((r) => !sameLocation(r, root));
+  persistRecents();
+  return loadRecents();
+}
+
+/** Drop all contour entries for a root (any depart_at / duration). */
+export function clearCachedContoursForLocation(lng: number, lat: number): void {
+  const prefix = locationCachePrefix(lng, lat);
+  for (const key of Object.keys(memoryCache)) {
+    if (key.startsWith(prefix)) {
+      delete memoryCache[key];
+    }
+  }
+  cacheOrder = cacheOrder.filter((k) => !k.startsWith(prefix));
+  persistCache();
 }

@@ -23,6 +23,7 @@ type Props = {
   recents: RootLocation[];
   onSelectRoot: (s: GeocodeSuggestion) => void;
   onSelectRecent: (root: RootLocation) => void;
+  onRemoveRecent: (root: RootLocation) => void;
   onDurationsChange: (d: DurationMinutes[]) => void;
   onTrafficChange: (t: DepartWhen) => void;
   onToggleCommitments: () => void;
@@ -41,6 +42,7 @@ export function Dock({
   recents,
   onSelectRoot,
   onSelectRecent,
+  onRemoveRecent,
   onDurationsChange,
   onTrafficChange,
   onToggleCommitments,
@@ -66,6 +68,7 @@ export function Dock({
           items={recents}
           active={root}
           onSelect={onSelectRecent}
+          onRemove={onRemoveRecent}
         />
         {root && (
           <p className="root-current" title={root.label}>

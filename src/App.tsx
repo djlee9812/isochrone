@@ -10,10 +10,13 @@ import { departAtForWhen } from "./api/departAt";
 import { pointInsideContour } from "./lib/pointInPolygon";
 import {
   assembleIsochrone,
+  clearCachedContoursForLocation,
+  coordKey,
   loadRecents,
   missingContours,
   putCachedContours,
   pushRecent,
+  removeRecent,
   sameLocation,
 } from "./lib/isochroneCache";
 import {
@@ -66,6 +69,7 @@ export default function App() {
   const reverseAbort = useRef<AbortController | null>(null);
   const isoSeq = useRef(0);
   const matrixSeq = useRef(0);
+  const isoOriginKey = useRef<string | null>(null);
   const lastPersistKey = useRef<string>("");
   const isochroneRef = useRef(isochrone);
   isochroneRef.current = isochrone;
@@ -146,6 +150,7 @@ export default function App() {
   useEffect(() => {
     if (rootLng == null || rootLat == null || !root) {
       isoAbort.current?.abort();
+      isoOriginKey.current = null;
       setIsochrone(null);
       setActiveDepartAt(null);
       setStatus("idle");
@@ -161,7 +166,12 @@ export default function App() {
     const seq = ++isoSeq.current;
     isoAbort.current?.abort();
 
-    // Drop previous origin's rings immediately; show cache for new key if any
+    const originKey = coordKey(rootLng, rootLat);
+    const originChanged = isoOriginKey.current !== originKey;
+    isoOriginKey.current = originKey;
+
+    // Drop previous origin's rings immediately; show cache for new key if any.
+    // Same-origin cache miss keeps prior rings until fetch settles (e.g. after dismiss).
     const previewDepartAt = departAtForWhen(when);
     const preview = assembleIsochrone(
       rootLng,
@@ -169,13 +179,17 @@ export default function App() {
       previewDepartAt,
       effectiveDurations,
     );
-    setIsochrone(preview.features.length > 0 ? preview : null);
-    setActiveDepartAt(previewDepartAt);
     if (preview.features.length > 0) {
+      setIsochrone(preview);
       setCommitments((prev) => applyInside(prev, preview));
+    } else if (originChanged) {
+      setIsochrone(null);
     }
+    setActiveDepartAt(previewDepartAt);
 
     const handle = window.setTimeout(async () => {
+      if (seq !== isoSeq.current) return;
+
       // Recompute at fetch time so we never send a past depart_at
       const departAt = departAtForWhen(when);
       setActiveDepartAt(departAt);
@@ -219,7 +233,7 @@ export default function App() {
       if (partial.features.length > 0) {
         setIsochrone(partial);
         setCommitments((prev) => applyInside(prev, partial));
-      } else {
+      } else if (originChanged) {
         setIsochrone(null);
       }
 
@@ -356,6 +370,20 @@ export default function App() {
     [rememberRoot],
   );
 
+  const onRemoveRecent = useCallback(
+    (item: RootLocation) => {
+      clearCachedContoursForLocation(item.lng, item.lat);
+      setRecents(removeRecent(item));
+      // Invalidate in-flight / debounced fetch so putCachedContours cannot refill.
+      if (root && sameLocation(root, item)) {
+        isoAbort.current?.abort();
+        isoSeq.current += 1;
+        setStatus("idle");
+      }
+    },
+    [root],
+  );
+
   const onMapClick = useCallback(
     (lng: number, lat: number) => {
       void setRootFromCoords(lng, lat);
@@ -418,6 +446,7 @@ export default function App() {
         recents={recents}
         onSelectRoot={onSelectRoot}
         onSelectRecent={onSelectRecent}
+        onRemoveRecent={onRemoveRecent}
         onDurationsChange={setDurations}
         onTrafficChange={setTraffic}
         onToggleCommitments={() => setCommitmentsOpen((o) => !o)}
