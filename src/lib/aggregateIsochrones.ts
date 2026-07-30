@@ -14,7 +14,7 @@ const CONTOUR_COLORS: Record<number, string> = {
 };
 
 /** Cells along the longer bbox axis. Higher = smoother Typical rings, more CPU. */
-const GRID_LONG_SIDE = 192;
+const GRID_LONG_SIDE = 256;
 /** Expand bbox so edge samples aren’t clipped to the union outline. */
 const BBOX_PAD_FRAC = 0.02;
 const UNREACHABLE = Number.POSITIVE_INFINITY;

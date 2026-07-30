@@ -17,7 +17,7 @@ export function aggregateMemoKey(
 ): string {
   const durs = [...durations].sort((a, b) => a - b).join(",");
   const ats = [...departAts].join(",");
-  return `${coordKey(lng, lat)}|g192|${ats}|${mode}|${durs}`;
+  return `${coordKey(lng, lat)}|g256|${ats}|${mode}|${durs}`;
 }
 
 function touchMemo(key: string): void {
