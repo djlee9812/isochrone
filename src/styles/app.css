@@ -422,6 +422,51 @@ input {
   animation: underline-draw 280ms var(--ease) both;
 }
 
+.reach-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.reach-mode-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.3rem;
+}
+
+.reach-mode-chip {
+  padding: 0.35rem 0.2rem;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface-solid);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition:
+    background 180ms var(--ease),
+    border-color 180ms var(--ease),
+    color 180ms var(--ease);
+}
+
+.reach-mode-chip:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.reach-mode-chip.is-active {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.reach-mode-hint {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .time-row {
   display: flex;
   align-items: center;

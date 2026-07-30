@@ -1,5 +1,4 @@
 import type { DurationMinutes } from "./types";
-import { assembleIsochrone, missingContours } from "./isochroneCache";
 
 export type IsochroneCommitmentsSync = "apply" | "clear" | "leave";
 
@@ -12,21 +11,6 @@ export type IsochroneDisplayPlan = {
   nextCollection: GeoJSON.FeatureCollection | null | undefined;
   syncCommitments: IsochroneCommitmentsSync;
 };
-
-export function resolveCachedIsochrone(
-  lng: number,
-  lat: number,
-  departAt: string,
-  durations: DurationMinutes[],
-): {
-  needed: DurationMinutes[];
-  assembled: GeoJSON.FeatureCollection;
-} {
-  return {
-    needed: missingContours(lng, lat, departAt, durations),
-    assembled: assembleIsochrone(lng, lat, departAt, durations),
-  };
-}
 
 /**
  * Stale-while-revalidate plan for isochrone polygons.

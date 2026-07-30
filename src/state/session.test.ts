@@ -3,12 +3,14 @@ import { defaultDepartWhen } from "../api/departAt";
 import { TIME_SHORTCUT_PM } from "../lib/departWhen";
 import {
   loadSession,
+  sanitizeReachMode,
   sanitizeTraffic,
   saveSession,
 } from "./session";
 
-const KEY = "from-here-session-v2";
-const LEGACY_KEY = "from-here-session-v1";
+const KEY = "from-here-session-v3";
+const LEGACY_V2_KEY = "from-here-session-v2";
+const LEGACY_V1_KEY = "from-here-session-v1";
 
 function mockSessionStorage() {
   const store = new Map<string, string>();
@@ -37,7 +39,7 @@ describe("sanitizeTraffic", () => {
   it('maps legacy "pm" to today + 5PM', () => {
     const today = defaultDepartWhen();
     expect(sanitizeTraffic("pm")).toEqual({
-      weekday: today.weekday,
+      weekdays: today.weekdays,
       hour: TIME_SHORTCUT_PM.hour,
       minute: TIME_SHORTCUT_PM.minute,
     });
@@ -48,23 +50,33 @@ describe("sanitizeTraffic", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-29T06:00:00Z"));
     expect(sanitizeTraffic("am", "America/Los_Angeles")).toEqual({
-      weekday: 2,
+      weekdays: [2],
       hour: 9,
       minute: 0,
     });
     expect(sanitizeTraffic("am")).toEqual({
-      weekday: 3,
+      weekdays: [3],
       hour: 9,
       minute: 0,
     });
     vi.useRealTimers();
   });
 
-  it("accepts valid DepartWhen objects", () => {
+  it("accepts legacy single weekday objects", () => {
     expect(sanitizeTraffic({ weekday: 2, hour: 8, minute: 15 })).toEqual({
-      weekday: 2,
+      weekdays: [2],
       hour: 8,
       minute: 15,
+    });
+  });
+
+  it("accepts weekdays arrays", () => {
+    expect(
+      sanitizeTraffic({ weekdays: [4, 2, 3], hour: 9, minute: 0 }),
+    ).toEqual({
+      weekdays: [2, 3, 4],
+      hour: 9,
+      minute: 0,
     });
   });
 
@@ -73,6 +85,14 @@ describe("sanitizeTraffic", () => {
       defaultDepartWhen(),
     );
     expect(sanitizeTraffic(null)).toEqual(defaultDepartWhen());
+  });
+});
+
+describe("sanitizeReachMode", () => {
+  it("defaults to worst and accepts known modes", () => {
+    expect(sanitizeReachMode(undefined)).toBe("worst");
+    expect(sanitizeReachMode("typical")).toBe("typical");
+    expect(sanitizeReachMode("nope")).toBe("worst");
   });
 });
 
@@ -89,7 +109,7 @@ describe("loadSession migration", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-29T06:00:00Z"));
     sessionStorage.setItem(
-      LEGACY_KEY,
+      LEGACY_V1_KEY,
       JSON.stringify({
         root: {
           lng: -118.2437,
@@ -105,16 +125,39 @@ describe("loadSession migration", () => {
 
     const state = loadSession();
     expect(state.traffic).toEqual({
-      weekday: 2,
+      weekdays: [2],
       hour: 9,
       minute: 0,
     });
+    expect(state.reachMode).toBe("worst");
     vi.useRealTimers();
   });
 
-  it("migrates v1 am/pm to v2 and removes the legacy key", () => {
+  it("migrates v2 single weekday to v3 weekdays", () => {
     sessionStorage.setItem(
-      LEGACY_KEY,
+      LEGACY_V2_KEY,
+      JSON.stringify({
+        root: null,
+        durations: [30],
+        traffic: { weekday: 5, hour: 17, minute: 0 },
+        commitments: [],
+        commitmentsOpen: false,
+      }),
+    );
+
+    const state = loadSession();
+    expect(state.traffic).toEqual({
+      weekdays: [5],
+      hour: 17,
+      minute: 0,
+    });
+    expect(sessionStorage.getItem(LEGACY_V2_KEY)).toBeNull();
+    expect(sessionStorage.getItem(KEY)).toBeTruthy();
+  });
+
+  it("migrates v1 am/pm to v3 and removes the legacy key", () => {
+    sessionStorage.setItem(
+      LEGACY_V1_KEY,
       JSON.stringify({
         root: null,
         durations: [30],
@@ -127,19 +170,20 @@ describe("loadSession migration", () => {
     const state = loadSession();
     const today = defaultDepartWhen();
     expect(state.traffic).toEqual({
-      weekday: today.weekday,
+      weekdays: today.weekdays,
       hour: 17,
       minute: 0,
     });
-    expect(sessionStorage.getItem(LEGACY_KEY)).toBeNull();
+    expect(sessionStorage.getItem(LEGACY_V1_KEY)).toBeNull();
     expect(sessionStorage.getItem(KEY)).toBeTruthy();
     const stored = JSON.parse(sessionStorage.getItem(KEY)!);
     expect(stored.traffic).toEqual(state.traffic);
+    expect(stored.reachMode).toBe("worst");
   });
 
-  it("keeps legacy key if v2 write fails", () => {
+  it("keeps legacy key if v3 write fails", () => {
     sessionStorage.setItem(
-      LEGACY_KEY,
+      LEGACY_V1_KEY,
       JSON.stringify({
         traffic: "am",
         durations: [15],
@@ -154,7 +198,7 @@ describe("loadSession migration", () => {
 
     const state = loadSession();
     expect(state.traffic).toEqual(defaultDepartWhen());
-    expect(sessionStorage.getItem(LEGACY_KEY)).toBeTruthy();
+    expect(sessionStorage.getItem(LEGACY_V1_KEY)).toBeTruthy();
     expect(sessionStorage.getItem(KEY)).toBeNull();
   });
 });
@@ -173,6 +217,7 @@ describe("saveSession", () => {
       root: null,
       durations: [30],
       traffic: defaultDepartWhen(),
+      reachMode: "worst",
       commitments: [],
       commitmentsOpen: false,
     });
@@ -187,6 +232,7 @@ describe("saveSession", () => {
         root: null,
         durations: [30],
         traffic: defaultDepartWhen(),
+        reachMode: "worst",
         commitments: [],
         commitmentsOpen: false,
       }),

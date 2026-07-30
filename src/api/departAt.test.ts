@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { defaultDepartWhen, departAtForWhen } from "./departAt";
+import {
+  defaultDepartWhen,
+  departAtForWhen,
+  departAtsForWhen,
+} from "./departAt";
 
 describe("departAtForWhen", () => {
   it("same weekday with future time → today", () => {
     // Wednesday 2026-07-29 08:00 EDT
     const now = new Date("2026-07-29T12:00:00Z");
     expect(
-      departAtForWhen({ weekday: 3, hour: 9, minute: 0 }, now),
+      departAtForWhen({ weekdays: [3], hour: 9, minute: 0 }, now),
     ).toBe("2026-07-29T09:00");
   });
 
@@ -14,7 +18,7 @@ describe("departAtForWhen", () => {
     // Wednesday 2026-07-29 10:00 EDT (after 9:00)
     const now = new Date("2026-07-29T14:00:00Z");
     expect(
-      departAtForWhen({ weekday: 3, hour: 9, minute: 0 }, now),
+      departAtForWhen({ weekdays: [3], hour: 9, minute: 0 }, now),
     ).toBe("2026-08-05T09:00");
   });
 
@@ -22,7 +26,7 @@ describe("departAtForWhen", () => {
     // Wednesday → Friday 17:00
     const now = new Date("2026-07-29T12:00:00Z");
     expect(
-      departAtForWhen({ weekday: 5, hour: 17, minute: 0 }, now),
+      departAtForWhen({ weekdays: [5], hour: 17, minute: 0 }, now),
     ).toBe("2026-07-31T17:00");
   });
 
@@ -30,7 +34,7 @@ describe("departAtForWhen", () => {
     // Wednesday → Sunday 09:00
     const now = new Date("2026-07-29T12:00:00Z");
     expect(
-      departAtForWhen({ weekday: 7, hour: 9, minute: 0 }, now),
+      departAtForWhen({ weekdays: [7], hour: 9, minute: 0 }, now),
     ).toBe("2026-08-02T09:00");
   });
 
@@ -38,7 +42,7 @@ describe("departAtForWhen", () => {
     // Sat 2026-03-07 23:30 EST — UTC addDays previously skipped Sunday
     const now = new Date("2026-03-08T04:30:00Z");
     expect(
-      departAtForWhen({ weekday: 7, hour: 9, minute: 0 }, now),
+      departAtForWhen({ weekdays: [7], hour: 9, minute: 0 }, now),
     ).toBe("2026-03-08T09:00");
   });
 
@@ -46,7 +50,7 @@ describe("departAtForWhen", () => {
     // Sun 2026-03-08 02:30 does not exist (2am → 3am)
     const now = new Date("2026-03-08T05:00:00Z"); // Sun 00:00 EST
     expect(
-      departAtForWhen({ weekday: 7, hour: 2, minute: 30 }, now),
+      departAtForWhen({ weekdays: [7], hour: 2, minute: 30 }, now),
     ).toBe("2026-03-08T03:00");
   });
 
@@ -54,7 +58,7 @@ describe("departAtForWhen", () => {
     // Sat before fall-back 2026-11-01 → Sunday 09:00
     const now = new Date("2026-10-31T16:00:00Z"); // Sat noon EDT
     expect(
-      departAtForWhen({ weekday: 7, hour: 9, minute: 0 }, now),
+      departAtForWhen({ weekdays: [7], hour: 9, minute: 0 }, now),
     ).toBe("2026-11-01T09:00");
   });
 
@@ -63,7 +67,7 @@ describe("departAtForWhen", () => {
     const now = new Date("2026-07-29T15:00:00Z");
     expect(
       departAtForWhen(
-        { weekday: 3, hour: 9, minute: 0 },
+        { weekdays: [3], hour: 9, minute: 0 },
         now,
         "America/Los_Angeles",
       ),
@@ -71,8 +75,17 @@ describe("departAtForWhen", () => {
 
     // Same UTC instant is already 11:00 in Boston → would roll +7 there
     expect(
-      departAtForWhen({ weekday: 3, hour: 9, minute: 0 }, now),
+      departAtForWhen({ weekdays: [3], hour: 9, minute: 0 }, now),
     ).toBe("2026-08-05T09:00");
+  });
+});
+
+describe("departAtsForWhen", () => {
+  it("returns one depart_at per weekday in sorted order", () => {
+    const now = new Date("2026-07-29T12:00:00Z"); // Wed before 9AM EDT
+    expect(
+      departAtsForWhen({ weekdays: [2, 3, 4], hour: 9, minute: 0 }, now),
+    ).toEqual(["2026-08-04T09:00", "2026-07-29T09:00", "2026-07-30T09:00"]);
   });
 });
 
@@ -81,12 +94,12 @@ describe("defaultDepartWhen", () => {
     // Wednesday morning UTC is still Tuesday evening in LA
     const now = new Date("2026-07-29T06:00:00Z");
     expect(defaultDepartWhen(now, "America/Los_Angeles")).toEqual({
-      weekday: 2,
+      weekdays: [2],
       hour: 9,
       minute: 0,
     });
     expect(defaultDepartWhen(now)).toEqual({
-      weekday: 3,
+      weekdays: [3],
       hour: 9,
       minute: 0,
     });

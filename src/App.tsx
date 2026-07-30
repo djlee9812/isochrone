@@ -6,22 +6,31 @@ import {
   fetchMatrixDurations,
   reverseGeocode,
 } from "./api/mapbox";
-import { departAtForWhen, defaultDepartWhen, matchesDefaultDepartWhen } from "./api/departAt";
+import {
+  departAtsForWhen,
+  defaultDepartWhen,
+  matchesDefaultDepartWhen,
+} from "./api/departAt";
 import { pointInsideContour } from "./lib/pointInPolygon";
 import { timeZoneForLngLat } from "./lib/timeZone";
 import {
   clearCachedContoursForLocation,
   coordKey,
   loadRecents,
+  persistContourCache,
   putCachedContours,
   pushRecent,
   removeRecent,
   sameLocation,
 } from "./lib/isochroneCache";
+import { getAggregatedIsochrone } from "./lib/aggregateMemo";
+import { meanEtas } from "./lib/meanEtas";
 import {
-  planIsochroneDisplay,
-  resolveCachedIsochrone,
-} from "./lib/isochroneDisplay";
+  allDaysHaveContours,
+  assembledForDisplay,
+  planMultiDayIsochrone,
+} from "./lib/multiDayIsochrone";
+import { planIsochroneDisplay } from "./lib/isochroneDisplay";
 import {
   loadSession,
   saveSession,
@@ -35,6 +44,7 @@ import type {
   DurationMinutes,
   FetchStatus,
   GeocodeSuggestion,
+  ReachMode,
   RootLocation,
 } from "./lib/types";
 
@@ -46,6 +56,19 @@ function clearAnnotations(list: Commitment[]): Commitment[] {
   return list.map(toPersistableCommitment);
 }
 
+function emptyOverlapMessage(
+  emptyContours: DurationMinutes[],
+  mode: ReachMode,
+): string | null {
+  if (mode !== "worst" || emptyContours.length === 0) return null;
+  const label = emptyContours
+    .slice()
+    .sort((a, b) => a - b)
+    .map((m) => `${m}m`)
+    .join(", ");
+  return `No overlap for ${label} across selected days.`;
+}
+
 export default function App() {
   const initial = useMemo(() => loadSession(), []);
   const [root, setRoot] = useState<RootLocation | null>(initial.root);
@@ -53,6 +76,7 @@ export default function App() {
     initial.durations,
   );
   const [traffic, setTraffic] = useState<DepartWhen>(initial.traffic);
+  const [reachMode, setReachMode] = useState<ReachMode>(initial.reachMode);
   const [commitments, setCommitments] = useState<Commitment[]>(
     initial.commitments,
   );
@@ -62,8 +86,19 @@ export default function App() {
   const [recents, setRecents] = useState<RootLocation[]>(() => loadRecents());
   const [isochrone, setIsochrone] =
     useState<GeoJSON.FeatureCollection | null>(null);
-  /** Shared depart_at used by isochrone cache keys and Matrix. */
-  const [activeDepartAt, setActiveDepartAt] = useState<string | null>(null);
+  /** Depart_ats backing the rings on screen (Matrix sync). */
+  const [activeDepartAts, setActiveDepartAts] = useState<string[]>([]);
+  const setActiveDepartAtsIfChanged = useCallback((next: string[]) => {
+    setActiveDepartAts((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.every((v, i) => v === next[i])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
   const [status, setStatus] = useState<FetchStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [searchProximity, setSearchProximity] = useState<[number, number]>(() =>
@@ -93,10 +128,11 @@ export default function App() {
         root,
         durations,
         traffic,
+        reachMode,
         commitments,
         commitmentsOpen,
       }),
-    [root, durations, traffic, commitments, commitmentsOpen],
+    [root, durations, traffic, reachMode, commitments, commitmentsOpen],
   );
 
   useEffect(() => {
@@ -106,10 +142,19 @@ export default function App() {
       root,
       durations,
       traffic,
+      reachMode,
       commitments,
       commitmentsOpen,
     });
-  }, [persistKey, root, durations, traffic, commitments, commitmentsOpen]);
+  }, [
+    persistKey,
+    root,
+    durations,
+    traffic,
+    reachMode,
+    commitments,
+    commitmentsOpen,
+  ]);
 
   const rememberRoot = useCallback((next: RootLocation) => {
     const prev = rootRef.current;
@@ -156,8 +201,8 @@ export default function App() {
     [maxDuration],
   );
 
-  const { weekday: trafficWeekday, hour: trafficHour, minute: trafficMinute } =
-    traffic;
+  const trafficWeekdaysKey = traffic.weekdays.join(",");
+  const { hour: trafficHour, minute: trafficMinute } = traffic;
 
   // Clear derived badges when the origin moves; traffic changes keep
   // annotations aligned with whatever rings are still on screen (stale or new).
@@ -169,19 +214,20 @@ export default function App() {
     .map((c) => `${c.id}:${c.lng},${c.lat}`)
     .join("|");
 
-  // Fetch only missing contours; toggle on/off uses cache
+  // Fetch only missing per-day contours; mode changes re-aggregate from cache
   useEffect(() => {
     if (rootLng == null || rootLat == null || !root) {
       isoAbort.current?.abort();
       isoOriginKey.current = null;
       setIsochrone(null);
-      setActiveDepartAt(null);
+      setActiveDepartAts([]);
       setStatus("idle");
+      setStatusMessage(null);
       return;
     }
 
     const when: DepartWhen = {
-      weekday: trafficWeekday,
+      weekdays: traffic.weekdays,
       hour: trafficHour,
       minute: trafficMinute,
     };
@@ -198,57 +244,132 @@ export default function App() {
       setStatus("error");
       setStatusMessage("Could not determine timezone for this location.");
       setIsochrone(null);
-      setActiveDepartAt(null);
+      setActiveDepartAts([]);
       return;
     }
-    const previewDepartAt = departAtForWhen(when, new Date(), timeZone);
-    const preview = resolveCachedIsochrone(
+
+    const applyAggregate = (
+      departAts: string[],
+      perDay: GeoJSON.FeatureCollection[],
+    ) => {
+      if (!allDaysHaveContours(perDay, effectiveDurations)) {
+        return null;
+      }
+      const { collection, emptyContours } = getAggregatedIsochrone(
+        rootLng,
+        rootLat,
+        departAts,
+        perDay,
+        effectiveDurations,
+        reachMode,
+      );
+      return { collection, emptyContours };
+    };
+
+    const applyDisplayPlan = (
+      plan: ReturnType<typeof planIsochroneDisplay>,
+      opts?: {
+        departAts?: string[];
+        idleMessage?: string | null;
+      },
+    ) => {
+      if (plan.nextCollection !== undefined) {
+        const next = plan.nextCollection;
+        setIsochrone(next);
+        if (opts?.departAts) {
+          setActiveDepartAtsIfChanged(opts.departAts);
+        }
+        if (plan.syncCommitments === "apply" && next) {
+          setCommitments((prev) => applyInside(prev, next));
+        } else if (plan.syncCommitments === "clear") {
+          setCommitments((prev) => clearAnnotations(prev));
+        }
+      }
+      setStatus(plan.status);
+      if (plan.status === "idle") {
+        setStatusMessage(opts?.idleMessage ?? null);
+      } else if (plan.status === "loading") {
+        setStatusMessage(null);
+      }
+    };
+
+    const previewAts = departAtsForWhen(when, new Date(), timeZone);
+    const preview = planMultiDayIsochrone(
       rootLng,
       rootLat,
-      previewDepartAt,
+      previewAts,
       effectiveDurations,
     );
-    const plan = planIsochroneDisplay({
-      originChanged,
-      needed: preview.needed,
-      assembled: preview.assembled,
-    });
+    const previewNeeded = preview.fetchJobs.flatMap((j) => j.contours);
+    // Typical multi-day aggregation is expensive — defer to the timeout so the
+    // effect body stays snappy (keep prior rings via leave).
+    const deferTypical =
+      preview.fullyCached &&
+      preview.departAts.length > 1 &&
+      reachMode === "typical";
 
-    if (plan.nextCollection !== undefined) {
-      const next = plan.nextCollection;
-      setIsochrone(next);
-      // activeDepartAt tracks the depart_at of the rings on screen (Matrix sync).
-      setActiveDepartAt(previewDepartAt);
-      if (plan.syncCommitments === "apply" && next) {
-        setCommitments((prev) => applyInside(prev, next));
-      } else if (plan.syncCommitments === "clear") {
-        setCommitments((prev) => clearAnnotations(prev));
-      }
+    if (deferTypical) {
+      setStatus("loading");
+      setStatusMessage(null);
+    } else {
+      const previewAgg = preview.fullyCached
+        ? applyAggregate(preview.departAts, preview.perDayAssembled)
+        : null;
+      const plan = planIsochroneDisplay({
+        originChanged,
+        needed: previewNeeded,
+        assembled: assembledForDisplay(
+          preview,
+          previewAgg?.collection ?? null,
+        ),
+      });
+      applyDisplayPlan(plan, {
+        departAts: preview.fullyCached ? preview.departAts : undefined,
+        idleMessage:
+          previewAgg != null
+            ? emptyOverlapMessage(previewAgg.emptyContours, reachMode)
+            : null,
+      });
     }
-    setStatus(plan.status);
-    setStatusMessage(null);
+
+    const debounceMs = deferTypical ? 0 : 280;
 
     const handle = window.setTimeout(async () => {
       if (seq !== isoSeq.current) return;
 
-      // Recompute at fetch time so we never send a past depart_at
-      const departAt = departAtForWhen(when, new Date(), timeZone);
-      const { needed, assembled } = resolveCachedIsochrone(
+      const departAts = departAtsForWhen(when, new Date(), timeZone);
+      const multi = planMultiDayIsochrone(
         rootLng,
         rootLat,
-        departAt,
+        departAts,
         effectiveDurations,
       );
 
       isoAbort.current?.abort();
 
-      if (needed.length === 0) {
+      if (multi.fullyCached) {
         if (seq !== isoSeq.current) return;
-        setIsochrone(assembled);
-        setActiveDepartAt(departAt);
-        setCommitments((prev) => applyInside(prev, assembled));
+        let agg: ReturnType<typeof applyAggregate>;
+        try {
+          agg = applyAggregate(multi.departAts, multi.perDayAssembled);
+        } catch (e) {
+          if (seq !== isoSeq.current) return;
+          setStatus("error");
+          setStatusMessage(
+            e instanceof Error ? e.message : "Typical reach failed",
+          );
+          return;
+        }
+        if (!agg) {
+          setStatus("error");
+          setStatusMessage("Could not build isochrone for selected days.");
+          return;
+        }
+        setIsochrone(agg.collection);
+        setActiveDepartAtsIfChanged(multi.departAts);
+        setCommitments((prev) => applyInside(prev, agg.collection));
         setStatus("idle");
-        setStatusMessage(null);
+        setStatusMessage(emptyOverlapMessage(agg.emptyContours, reachMode));
         return;
       }
 
@@ -257,45 +378,63 @@ export default function App() {
       setStatus("loading");
       setStatusMessage(null);
 
-      // If depart_at drifted since preview, re-apply the display plan once.
+      const deferredNeeded = multi.fetchJobs.flatMap((j) => j.contours);
+      const deferredAgg = multi.fullyCached
+        ? applyAggregate(multi.departAts, multi.perDayAssembled)
+        : null;
       const deferred = planIsochroneDisplay({
         originChanged,
-        needed,
-        assembled,
+        needed: deferredNeeded,
+        assembled: assembledForDisplay(
+          multi,
+          deferredAgg?.collection ?? null,
+        ),
       });
-      if (deferred.nextCollection !== undefined) {
-        if (seq !== isoSeq.current) return;
-        const next = deferred.nextCollection;
-        setIsochrone(next);
-        setActiveDepartAt(departAt);
-        if (deferred.syncCommitments === "apply" && next) {
-          setCommitments((prev) => applyInside(prev, next));
-        } else if (deferred.syncCommitments === "clear") {
-          setCommitments((prev) => clearAnnotations(prev));
-        }
-      }
+      if (seq !== isoSeq.current) return;
+      applyDisplayPlan(deferred);
 
       try {
-        const data = await fetchIsochrone({
-          lng: rootLng,
-          lat: rootLat,
-          contours: needed,
-          departAt,
-          signal: ac.signal,
-        });
+        const fetched = await Promise.all(
+          multi.fetchJobs.map(async (job) => {
+            const data = await fetchIsochrone({
+              lng: rootLng,
+              lat: rootLat,
+              contours: job.contours,
+              departAt: job.departAt,
+              signal: ac.signal,
+            });
+            return { departAt: job.departAt, features: data.features };
+          }),
+        );
         if (ac.signal.aborted || seq !== isoSeq.current) return;
 
-        putCachedContours(rootLng, rootLat, departAt, data.features);
-        const next = resolveCachedIsochrone(
+        for (const job of fetched) {
+          putCachedContours(rootLng, rootLat, job.departAt, job.features, {
+            persist: false,
+          });
+        }
+        persistContourCache();
+
+        const resolved = planMultiDayIsochrone(
           rootLng,
           rootLat,
-          departAt,
+          departAts,
           effectiveDurations,
-        ).assembled;
-        setIsochrone(next);
-        setActiveDepartAt(departAt);
-        setCommitments((prev) => applyInside(prev, next));
+        );
+        const agg = applyAggregate(
+          resolved.departAts,
+          resolved.perDayAssembled,
+        );
+        if (!agg) {
+          setStatus("error");
+          setStatusMessage("Isochrone incomplete after fetch");
+          return;
+        }
+        setIsochrone(agg.collection);
+        setActiveDepartAtsIfChanged(resolved.departAts);
+        setCommitments((prev) => applyInside(prev, agg.collection));
         setStatus("idle");
+        setStatusMessage(emptyOverlapMessage(agg.emptyContours, reachMode));
       } catch (e) {
         if ((e as Error).name === "AbortError" || ac.signal.aborted) return;
         if (seq !== isoSeq.current) return;
@@ -303,14 +442,13 @@ export default function App() {
         setStatusMessage(
           e instanceof Error ? e.message : "Isochrone request failed",
         );
-        // Origin change: blank. Same origin: keep stale rings + prior activeDepartAt
-        // (still dimmed via error) so Matrix/UI stay consistent with what's drawn.
         if (originChanged) {
           setIsochrone(null);
+          setActiveDepartAts([]);
           setCommitments((prev) => clearAnnotations(prev));
         }
       }
-    }, 280);
+    }, debounceMs);
 
     return () => {
       window.clearTimeout(handle);
@@ -321,18 +459,21 @@ export default function App() {
     rootLng,
     rootLat,
     effectiveDurations,
-    trafficWeekday,
+    trafficWeekdaysKey,
     trafficHour,
     trafficMinute,
+    traffic.weekdays,
+    reachMode,
     applyInside,
+    setActiveDepartAtsIfChanged,
   ]);
 
-  // Matrix ETAs only — uses the same depart_at as the visible rings
+  // Matrix ETAs — mean across activeDepartAts
   useEffect(() => {
     if (
       rootLng == null ||
       rootLat == null ||
-      !activeDepartAt ||
+      activeDepartAts.length === 0 ||
       commitments.length === 0
     ) {
       return;
@@ -344,20 +485,25 @@ export default function App() {
     }));
     const ids = commitments.map((c) => c.id);
     const seq = ++matrixSeq.current;
-    const departAt = activeDepartAt;
+    const departAts = activeDepartAts;
 
     const handle = window.setTimeout(async () => {
       matrixAbort.current?.abort();
       const ac = new AbortController();
       matrixAbort.current = ac;
       try {
-        const etas = await fetchMatrixDurations({
-          origin: { lng: rootLng, lat: rootLat },
-          destinations,
-          departAt,
-          signal: ac.signal,
-        });
+        const rows = await Promise.all(
+          departAts.map((departAt) =>
+            fetchMatrixDurations({
+              origin: { lng: rootLng, lat: rootLat },
+              destinations,
+              departAt,
+              signal: ac.signal,
+            }),
+          ),
+        );
         if (ac.signal.aborted || seq !== matrixSeq.current) return;
+        const etas = meanEtas(rows);
         setCommitments((prev) =>
           prev.map((c) => {
             const idx = ids.indexOf(c.id);
@@ -374,7 +520,7 @@ export default function App() {
       window.clearTimeout(handle);
       matrixAbort.current?.abort();
     };
-  }, [rootLng, rootLat, activeDepartAt, commitmentKey]);
+  }, [rootLng, rootLat, activeDepartAts, commitmentKey]);
 
   const setRootFromCoords = useCallback(
     async (lng: number, lat: number, label?: string) => {
@@ -494,6 +640,7 @@ export default function App() {
         root={root}
         durations={effectiveDurations}
         traffic={traffic}
+        reachMode={reachMode}
         status={status}
         statusMessage={statusMessage}
         commitments={commitments}
@@ -505,6 +652,7 @@ export default function App() {
         onRemoveRecent={onRemoveRecent}
         onDurationsChange={setDurations}
         onTrafficChange={setTraffic}
+        onReachModeChange={setReachMode}
         onToggleCommitments={() => setCommitmentsOpen((o) => !o)}
         onAddCommitment={onAddCommitment}
         onRemoveCommitment={onRemoveCommitment}

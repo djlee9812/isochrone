@@ -1,5 +1,5 @@
 import type { DepartWhen, Weekday } from "../lib/types";
-import { TIME_SHORTCUT_AM, pad2 } from "../lib/departWhen";
+import { TIME_SHORTCUT_AM, pad2, sameWeekdays } from "../lib/departWhen";
 import { DEFAULT_TIME_ZONE } from "../lib/timeZone";
 
 export { DEFAULT_TIME_ZONE };
@@ -35,26 +35,45 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
 }
 
 /**
- * Next occurrence of the selected weekday at hour:minute in `timeZone`,
- * formatted for Mapbox Isochrone `depart_at` as YYYY-MM-DDThh:mm
- * (Mapbox infers the offset from the request coordinates).
- *
- * If that slot already passed this week, rolls forward +7 days.
- * Times in a spring-forward gap clamp to the next valid local minute.
+ * Next occurrence of one weekday at hour:minute in `timeZone`,
+ * formatted for Mapbox Isochrone `depart_at` as YYYY-MM-DDThh:mm.
+ */
+export function departAtForWeekday(
+  weekday: Weekday,
+  hour: number,
+  minute: number,
+  now = new Date(),
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string {
+  const next = nextWeekdayAtTime(now, weekday, hour, minute, timeZone);
+  return formatLocalDepartAt(next, timeZone);
+}
+
+/**
+ * Next occurrence of the first selected weekday (compat helper).
+ * Prefer `departAtsForWhen` for multi-day.
  */
 export function departAtForWhen(
   when: DepartWhen,
   now = new Date(),
   timeZone: string = DEFAULT_TIME_ZONE,
 ): string {
-  const next = nextWeekdayAtTime(
-    now,
-    when.weekday,
-    when.hour,
-    when.minute,
-    timeZone,
+  const weekday = when.weekdays[0];
+  if (weekday == null) {
+    throw new Error("DepartWhen.weekdays must be non-empty");
+  }
+  return departAtForWeekday(weekday, when.hour, when.minute, now, timeZone);
+}
+
+/** One `depart_at` per selected weekday (sorted weekdays order). */
+export function departAtsForWhen(
+  when: DepartWhen,
+  now = new Date(),
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string[] {
+  return when.weekdays.map((weekday) =>
+    departAtForWeekday(weekday, when.hour, when.minute, now, timeZone),
   );
-  return formatLocalDepartAt(next, timeZone);
 }
 
 /** Fresh-session default: today’s weekday in `timeZone` + 09:00. */
@@ -64,13 +83,13 @@ export function defaultDepartWhen(
 ): DepartWhen {
   const today = zonedParts(now, timeZone).weekday as Weekday;
   return {
-    weekday: today,
+    weekdays: [today],
     hour: TIME_SHORTCUT_AM.hour,
     minute: TIME_SHORTCUT_AM.minute,
   };
 }
 
-/** True when `when` matches the Eastern session default for `now`. */
+/** True when `when` matches the session default for `now` in `timeZone`. */
 export function matchesDefaultDepartWhen(
   when: DepartWhen,
   now = new Date(),
@@ -78,7 +97,7 @@ export function matchesDefaultDepartWhen(
 ): boolean {
   const d = defaultDepartWhen(now, timeZone);
   return (
-    when.weekday === d.weekday &&
+    sameWeekdays(when.weekdays, d.weekdays) &&
     when.hour === d.hour &&
     when.minute === d.minute
   );

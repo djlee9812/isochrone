@@ -1,10 +1,11 @@
 import { DURATIONS, type DurationMinutes, type RootLocation } from "./types";
+import { clearAggregateMemoForLocation } from "./aggregateMemo";
 
 const CACHE_KEY = "from-here-iso-cache-v2";
 const RECENTS_KEY = "from-here-recents-v1";
 const MAX_RECENTS = 5;
 /** Cap contour entries so sessionStorage / memory stay bounded. */
-const MAX_CACHE_ENTRIES = 36;
+const MAX_CACHE_ENTRIES = 96;
 
 /** ~1m grid — avoids conflating nearby distinct roots. */
 export function coordKey(lng: number, lat: number): string {
@@ -130,6 +131,7 @@ export function putCachedContours(
   lat: number,
   departAt: string,
   features: GeoJSON.Feature[],
+  opts?: { persist?: boolean },
 ): void {
   for (const feature of features) {
     const contour = feature.properties?.contour;
@@ -139,6 +141,12 @@ export function putCachedContours(
     touchKey(key);
   }
   evictIfNeeded();
+  clearAggregateMemoForLocation(lng, lat);
+  if (opts?.persist !== false) persistCache();
+}
+
+/** Flush contour cache to sessionStorage (after batched puts). */
+export function persistContourCache(): void {
   persistCache();
 }
 
@@ -200,4 +208,5 @@ export function clearCachedContoursForLocation(lng: number, lat: number): void {
   }
   cacheOrder = cacheOrder.filter((k) => !k.startsWith(prefix));
   persistCache();
+  clearAggregateMemoForLocation(lng, lat);
 }

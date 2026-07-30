@@ -21,7 +21,7 @@ describe("timeZoneForLngLat", () => {
       DEFAULT_TIME_ZONE,
     );
     const now = new Date("2026-07-29T12:00:00Z");
-    const when = { weekday: 3 as const, hour: 9, minute: 0 };
+    const when = { weekdays: [3 as const], hour: 9, minute: 0 };
     const tz = timeZoneForLngLat(BOSTON_CENTER[0], BOSTON_CENTER[1])!;
     expect(departAtForWhen(when, now, tz)).toBe(departAtForWhen(when, now));
   });

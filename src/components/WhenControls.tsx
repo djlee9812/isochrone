@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { DepartWhen, Weekday } from "../lib/types";
+import type { DepartWhen, ReachMode, Weekday } from "../lib/types";
 import {
+  REACH_MODE_OPTIONS,
   TIME_SHORTCUTS,
   formatHhMm,
   matchesTimeShortcut,
   parseTimeInput,
+  sameWeekdays,
+  toggleWeekdaySelection,
 } from "../lib/departWhen";
 
 const DAYS: { weekday: Weekday; label: string; title: string }[] = [
@@ -22,10 +25,17 @@ const TIME_COMMIT_MS = 500;
 
 type Props = {
   value: DepartWhen;
+  reachMode: ReachMode;
   onChange: (next: DepartWhen) => void;
+  onReachModeChange: (mode: ReachMode) => void;
 };
 
-export function WhenControls({ value, onChange }: Props) {
+export function WhenControls({
+  value,
+  reachMode,
+  onChange,
+  onReachModeChange,
+}: Props) {
   const [draftTime, setDraftTime] = useState(() =>
     formatHhMm(value.hour, value.minute),
   );
@@ -86,21 +96,22 @@ export function WhenControls({ value, onChange }: Props) {
     };
   }, []);
 
-  const setWeekday = (weekday: Weekday) => {
+  const toggleWeekday = (weekday: Weekday) => {
     clearCommitTimer();
     const current = valueRef.current;
     const parsed = parseTimeInput(draftRef.current);
     const hour = parsed?.hour ?? current.hour;
     const minute = parsed?.minute ?? current.minute;
+    const weekdays = toggleWeekdaySelection(current.weekdays, weekday);
     if (
-      current.weekday === weekday &&
+      sameWeekdays(current.weekdays, weekdays) &&
       current.hour === hour &&
       current.minute === minute
     ) {
       return;
     }
     if (parsed) setDraftTime(formatHhMm(hour, minute));
-    onChangeRef.current({ weekday, hour, minute });
+    onChangeRef.current({ weekdays, hour, minute });
   };
 
   const onTimeInput = (raw: string) => {
@@ -127,11 +138,16 @@ export function WhenControls({ value, onChange }: Props) {
     commitTime(hour, minute);
   };
 
+  const showReachModes = value.weekdays.length > 1;
+  const activeMode =
+    REACH_MODE_OPTIONS.find((o) => o.mode === reachMode) ??
+    REACH_MODE_OPTIONS[0]!;
+
   return (
     <div className="when-controls">
-      <div className="day-chips" role="group" aria-label="Day of week">
+      <div className="day-chips" role="group" aria-label="Days of week">
         {DAYS.map((d) => {
-          const active = value.weekday === d.weekday;
+          const active = value.weekdays.includes(d.weekday);
           return (
             <button
               key={d.weekday}
@@ -140,13 +156,40 @@ export function WhenControls({ value, onChange }: Props) {
               aria-pressed={active}
               aria-label={d.title}
               title={d.title}
-              onClick={() => setWeekday(d.weekday)}
+              onClick={() => toggleWeekday(d.weekday)}
             >
               {d.label}
             </button>
           );
         })}
       </div>
+
+      {showReachModes && (
+        <div className="reach-mode">
+          <div
+            className="reach-mode-chips"
+            role="group"
+            aria-label="Multi-day reach"
+          >
+            {REACH_MODE_OPTIONS.map((o) => {
+              const active = reachMode === o.mode;
+              return (
+                <button
+                  key={o.mode}
+                  type="button"
+                  className={`reach-mode-chip ${active ? "is-active" : ""}`}
+                  aria-pressed={active}
+                  title={o.title}
+                  onClick={() => onReachModeChange(o.mode)}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="reach-mode-hint">{activeMode.title}</p>
+        </div>
+      )}
 
       <div className="time-row">
         <label className="time-field">
