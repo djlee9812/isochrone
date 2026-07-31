@@ -57,33 +57,45 @@ export function Dock({
   onAddCommitment,
   onRemoveCommitment,
 }: Props) {
+  const statusText =
+    status === "loading"
+      ? "Updating…"
+      : status === "error"
+        ? (statusMessage ?? "Something went wrong. Try again.")
+        : status === "idle" && root && statusMessage
+          ? statusMessage
+          : "";
+  const statusVisible =
+    status === "error" || (status === "idle" && !!root && !!statusMessage);
+
   return (
     <aside className="dock" aria-label="Map controls">
       <header className="dock-header">
-        <h1 className="wordmark">From Here</h1>
-        <p className="mode-label">Driving</p>
+        <h1 className="wordmark">
+          From Here
+          {status === "loading" && (
+            <span className="dock-spinner" aria-hidden="true" />
+          )}
+        </h1>
       </header>
 
       <section className="dock-section">
-        <label className="section-label" htmlFor="root-search">
-          Start
-        </label>
         <AddressSearch
           placeholder="Search an address…"
           proximity={searchProximity}
           onSelect={onSelectRoot}
-        />
-        <RecentSearches
-          items={recents}
-          active={root}
-          onSelect={onSelectRecent}
-          onRemove={onRemoveRecent}
         />
         {root && (
           <p className="root-current" title={root.label}>
             {root.label}
           </p>
         )}
+        <RecentSearches
+          items={recents}
+          active={root}
+          onSelect={onSelectRecent}
+          onRemove={onRemoveRecent}
+        />
       </section>
 
       <section className="dock-section">
@@ -102,25 +114,16 @@ export function Dock({
       </section>
 
       <div
-        className={`dock-status ${status === "loading" ? "is-loading" : ""} ${status === "error" ? "is-error" : ""}`}
+        className={
+          statusVisible
+            ? `dock-status${status === "error" ? " is-error" : ""}`
+            : "visually-hidden"
+        }
         role="status"
         aria-live="polite"
+        aria-atomic="true"
       >
-        {status === "loading" && (
-          <>
-            <span className="dock-spinner" aria-hidden="true" />
-            <span>Updating…</span>
-          </>
-        )}
-        {status === "error" && (
-          <span>{statusMessage ?? "Something went wrong. Try again."}</span>
-        )}
-        {status === "idle" && !root && (
-          <span>Search an address or click the map to begin.</span>
-        )}
-        {status === "idle" && root && statusMessage && (
-          <span>{statusMessage}</span>
-        )}
+        {statusText}
       </div>
 
       <Commitments

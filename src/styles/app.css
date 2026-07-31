@@ -127,6 +127,9 @@ input {
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   margin: 0;
   font-family: var(--font-display);
   font-weight: 700;
@@ -134,13 +137,6 @@ input {
   letter-spacing: -0.03em;
   line-height: 1.05;
   color: var(--text);
-}
-
-.mode-label {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
 }
 
 .dock-section {
@@ -541,25 +537,6 @@ input {
 
 /* Status */
 
-.dock-status {
-  margin: 0.25rem 0 0.85rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  background: rgba(26, 35, 50, 0.04);
-  min-height: 2.4rem;
-  display: flex;
-  align-items: center;
-  transition: background 240ms var(--ease);
-}
-
-.dock-status.is-loading {
-  background: rgba(47, 122, 138, 0.1);
-  color: var(--ring-30);
-  gap: 0.45rem;
-}
-
 .dock-spinner {
   width: 0.7rem;
   height: 0.7rem;
@@ -574,6 +551,15 @@ input {
   to {
     transform: rotate(360deg);
   }
+}
+
+.dock-status {
+  margin: 0.25rem 0 0.85rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: rgba(26, 35, 50, 0.04);
 }
 
 .dock-status.is-error {

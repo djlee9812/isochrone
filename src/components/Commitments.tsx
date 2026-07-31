@@ -29,9 +29,7 @@ export function Commitments({
       </button>
 
       <div className="commitments-body" hidden={!open}>
-        <p className="commitments-hint">
-          Gym, office, friends — see if they land in your drive-time rings.
-        </p>
+        <p className="commitments-hint">Gym, office, friends</p>
         <AddressSearch
           placeholder="Add a place…"
           proximity={proximity}
